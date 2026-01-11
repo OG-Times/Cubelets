@@ -1,0 +1,30 @@
+world:
+  max-chance: 100
+  firework:
+    type: BALL
+    flicker: false
+    trail: false
+    colors:
+      - YELLOW
+    fade:
+      - WHITE
+  rewards:
+    0:
+      reward-name: '&emd_5 squad icon'
+      reward-chance: 25
+      reward-rarity: '&6Legendary'
+      item-type: 'Head'
+      head-name: 'md_5'
+      custom-head-id: 'eyJ0ZXh0dXJlcyI6eyJTS0lOIjp7InVybCI6Imh0dHA6Ly90ZXh0dXJlcy5taW5lY3JhZnQubmV0L3RleHR1cmUvZDVjNmRjMmJiZjUxYzM2Y2ZjNzcxNDU4NWE2YTU2ODNlZjJiMTRkNDdkOGZmNzE0NjU0YTg5M2Y1ZGE2MjIifX19'
+      reward-item-id: 1
+      reward-item-damage: 0
+      firework:
+        type: BALL
+        flicker: true
+        trail: false
+        colors:
+          - BLUE
+        fade:
+          - WHITE
+      commands:
+        - say %player% hi

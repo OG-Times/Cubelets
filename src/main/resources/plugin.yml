@@ -1,0 +1,7 @@
+name: Cubelets
+main: me.joseph.cubelets.Main
+author: JosephGP
+version: 1.1
+depend: [HolographicDisplays]
+commands:
+  cubelets:
