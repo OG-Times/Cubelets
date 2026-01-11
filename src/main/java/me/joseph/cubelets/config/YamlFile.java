@@ -6,9 +6,6 @@ import java.io.IOException;
 import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.configuration.file.YamlConfiguration;
 
-/**
- * Wrapper mínimo para manejar YAMLs del plugin (load/save/reload).
- */
 public class YamlFile {
     private final File file;
     private FileConfiguration config;

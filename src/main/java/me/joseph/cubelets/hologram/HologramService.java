@@ -12,9 +12,6 @@ import org.bukkit.Location;
 import org.bukkit.entity.Player;
 import org.bukkit.plugin.Plugin;
 
-/**
- * Capa fina sobre HolographicDisplays API v3 para evitar que Main tenga que lidiar con detalles.
- */
 public class HologramService {
 
     private final Plugin plugin;
@@ -37,9 +34,6 @@ public class HologramService {
         return createTextHologram(loc, lines == null ? null : Arrays.asList(lines));
     }
 
-    /**
-     * Oculta el holograma globalmente y lo hace visible para un jugador.
-     */
     public void setViewers(Hologram hologram, Player only) {
         if (hologram == null || only == null) return;
         VisibilitySettings visibility = hologram.getVisibilitySettings();
@@ -47,9 +41,6 @@ public class HologramService {
         visibility.setIndividualVisibility(only, VisibilitySettings.Visibility.VISIBLE);
     }
 
-    /**
-     * Oculta el holograma globalmente y lo hace visible para varios jugadores.
-     */
     public void setViewers(Hologram hologram, Collection<? extends Player> viewers) {
         if (hologram == null || viewers == null) return;
         VisibilitySettings visibility = hologram.getVisibilitySettings();

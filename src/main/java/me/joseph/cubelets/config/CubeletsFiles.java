@@ -4,9 +4,6 @@ import java.io.File;
 
 import org.bukkit.plugin.java.JavaPlugin;
 
-/**
- * Centraliza la gestión de archivos YAML del plugin.
- */
 public class CubeletsFiles {
     private final JavaPlugin plugin;
 
