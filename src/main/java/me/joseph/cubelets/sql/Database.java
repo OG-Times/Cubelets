@@ -1,10 +1,11 @@
 package me.joseph.cubelets.sql;
 
+import org.bukkit.plugin.Plugin;
+
 import java.sql.Connection;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
-import org.bukkit.plugin.Plugin;
 
 public abstract class Database {
     protected Connection connection;

@@ -1,8 +1,8 @@
 package me.joseph.cubelets.config;
 
-import java.io.File;
-
 import org.bukkit.plugin.java.JavaPlugin;
+
+import java.io.File;
 
 public class CubeletsFiles {
     private final JavaPlugin plugin;
@@ -15,9 +15,9 @@ public class CubeletsFiles {
         this.plugin = plugin;
 
         File dataFolder = plugin.getDataFolder();
-        this.settings = new YamlFile(new File(dataFolder, "settings.yml"));
-        this.data = new YamlFile(new File(dataFolder, "data.yml"));
-        this.messages = new YamlFile(new File(dataFolder, "messages.yml"));
+        this.settings = new YamlFile(new File(dataFolder, "SettingsConfig.yml"));
+        this.data = new YamlFile(new File(dataFolder, "DataConfig.yml"));
+        this.messages = new YamlFile(new File(dataFolder, "MessagesConfig.yml"));
     }
 
     public YamlFile settings() {

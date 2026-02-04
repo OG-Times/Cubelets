@@ -1,12 +1,13 @@
 package me.joseph.cubelets.sql;
 
+import me.joseph.cubelets.Cubelets;
+import org.bukkit.plugin.Plugin;
+import org.bukkit.scheduler.BukkitRunnable;
+
 import java.sql.Connection;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
-import me.joseph.cubelets.Main;
-import org.bukkit.plugin.Plugin;
-import org.bukkit.scheduler.BukkitRunnable;
 
 public class SQLConnection {
     public SQLDatabase MySQL;
@@ -28,7 +29,7 @@ public class SQLConnection {
                 public void run() {
                     SQLConnection.this.openConnection();
                 }
-            }).runTaskLater(Main.getInstance(), 100L);
+            }).runTaskLater(Cubelets.getInstance(), 100L);
         } catch (ClassNotFoundException var2) {
             var2.printStackTrace();
         } catch (SQLException var3) {

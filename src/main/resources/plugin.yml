@@ -1,5 +1,5 @@
 name: Cubelets
-main: me.joseph.cubelets.Main
+main: me.joseph.cubelets.Cubelets
 author: JosephGP
 version: 1.1
 depend: [HolographicDisplays]

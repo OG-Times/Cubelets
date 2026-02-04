@@ -1,16 +1,15 @@
 package me.joseph.cubelets.hologram;
 
-import java.util.Arrays;
-import java.util.Collection;
-import java.util.List;
-
 import me.filoghost.holographicdisplays.api.HolographicDisplaysAPI;
 import me.filoghost.holographicdisplays.api.hologram.Hologram;
 import me.filoghost.holographicdisplays.api.hologram.VisibilitySettings;
-
 import org.bukkit.Location;
 import org.bukkit.entity.Player;
 import org.bukkit.plugin.Plugin;
+
+import java.util.Arrays;
+import java.util.Collection;
+import java.util.List;
 
 public class HologramService {
 

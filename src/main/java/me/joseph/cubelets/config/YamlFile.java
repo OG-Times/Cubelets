@@ -1,10 +1,10 @@
 package me.joseph.cubelets.config;
 
-import java.io.File;
-import java.io.IOException;
-
 import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.configuration.file.YamlConfiguration;
+
+import java.io.File;
+import java.io.IOException;
 
 public class YamlFile {
     private final File file;

@@ -1,9 +1,10 @@
 package me.joseph.cubelets.sql;
 
+import org.bukkit.plugin.Plugin;
+
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.SQLException;
-import org.bukkit.plugin.Plugin;
 
 public class SQLDatabase extends Database {
     private final String user;

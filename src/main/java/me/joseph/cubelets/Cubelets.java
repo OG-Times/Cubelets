@@ -3,24 +3,18 @@ package me.joseph.cubelets;
 import com.mojang.authlib.GameProfile;
 import com.mojang.authlib.properties.Property;
 import io.netty.util.internal.ThreadLocalRandom;
-import java.io.File;
-import java.lang.reflect.Field;
-import java.util.*;
-
+import lombok.Getter;
+import me.filoghost.holographicdisplays.api.hologram.Hologram;
+import me.joseph.cubelets.api.CubeletsAPI;
+import me.joseph.cubelets.command.CubeletsCommand;
+import me.joseph.cubelets.config.DataConfig;
+import me.joseph.cubelets.config.MessagesConfig;
+import me.joseph.cubelets.config.SettingsConfig;
+import me.joseph.cubelets.hologram.HologramService;
 import me.joseph.cubelets.sql.SQLConnection;
-
-import org.bukkit.Bukkit;
-import org.bukkit.ChatColor;
-import org.bukkit.Color;
-import org.bukkit.Location;
-import org.bukkit.Material;
-import org.bukkit.SkullType;
-import org.bukkit.World;
+import org.bukkit.*;
+import org.bukkit.FireworkEffect.Type;
 import org.bukkit.block.Block;
-import org.bukkit.command.Command;
-import org.bukkit.command.CommandSender;
-import org.bukkit.command.ConsoleCommandSender;
-import org.bukkit.entity.Entity;
 import org.bukkit.entity.Firework;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
@@ -35,110 +29,106 @@ import org.bukkit.inventory.meta.SkullMeta;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.bukkit.scheduler.BukkitRunnable;
 
-import org.bukkit.FireworkEffect;
-import org.bukkit.FireworkEffect.Type;
-import me.joseph.cubelets.hologram.HologramService;
-import me.filoghost.holographicdisplays.api.hologram.Hologram;
+import java.io.File;
+import java.lang.reflect.Field;
+import java.util.*;
 
-public class Main extends JavaPlugin implements Listener {
+@Getter
+public class Cubelets extends JavaPlugin implements Listener {
+    @Getter public static Cubelets instance;
+
     HashMap<String, Integer> size = new HashMap<>();
-    public CubeletsAPI api;
     public SQLConnection sqlConnection = null;
-    public data data;
-    public messages messages;
-    public settings settings;
-    public static Main instance;
+    public DataConfig dataConfig;
+    public MessagesConfig messagesConfig;
+    public SettingsConfig settingsConfig;
     ArrayList<String> cooldown = new ArrayList<>();
     public ArrayList<Location> used = new ArrayList<>();
     public HashMap<Block, Hologram> holo = new HashMap<>();
     public HashMap<Block, Integer> height = new HashMap<>();
-    private HologramService holograms;
+    private HologramService hologramService;
 
+    @Override
     public void onEnable() {
         Bukkit.getServer().getPluginManager().registerEvents(this, this);
-        this.holograms = new HologramService(this);
-        this.settings = new settings(new File(this.getDataFolder() + "/settings.yml"));
-        this.settings.save();
-        this.settings.getConfig().addDefault("fireworks-height", 15);
-        this.settings.getConfig().addDefault("fireworks-speed", 3);
-        this.settings.getConfig().addDefault("reset-after", 5);
-        this.settings.getConfig().addDefault("floating-item-height", 1.6D);
-        this.settings.getConfig().addDefault("mysql", false);
-        this.settings.getConfig().addDefault("host", "localhost");
-        this.settings.getConfig().addDefault("port", "3306");
-        this.settings.getConfig().addDefault("database", "testdb");
-        this.settings.getConfig().addDefault("username", "root");
-        this.settings.getConfig().addDefault("password", "");
-        this.settings.getConfig().options().copyDefaults(true);
-        this.settings.save();
-        this.data = new data(new File(this.getDataFolder() + "/data.yml"));
-        this.data.save();
-        this.data.getConfig().options().copyDefaults(true);
-        this.data.save();
-        this.messages = new messages(new File(this.getDataFolder() + "/messages.yml"));
-        this.messages.save();
-        this.messages.getConfig().addDefault("add-cubelet-error", "&a[Cubelets] &7You already added this block as a cubelet block!");
-        this.messages.getConfig().addDefault("add-cubelet-message", "&a[Cubelets] &eYou have added this block as a cubelet block!");
-        this.messages.getConfig().addDefault("remove-cubelet-error", "&a[Cubelets] &7This is not a cubelet block!");
-        this.messages.getConfig().addDefault("remove-cubelet-message", "&a[Cubelets] &eYou have removed this cubelet block!");
-        this.messages.getConfig().addDefault("already-in-use", "&a[Cubelets] &7This cubelet block is already in use!");
-        this.messages.getConfig().addDefault("not-enough-cubelets", "&a[Cubelets] &7You dont have any cubelets to open!");
-        this.messages.getConfig().addDefault("not-online", "&a[Cubelets] &7That player is not online!");
-        this.messages.getConfig().addDefault("cubelets-add", "&a[Cubelets] &eAdded &a%cubelets% &ecubelets for &a%player%&e!");
-        this.messages.getConfig().addDefault("cubelets-remove", "&a[Cubelets] &eRemoved &a%cubelets% &ecubelets from &a%player%&e!");
-        this.messages.getConfig().addDefault("cubelets-set", "&a[Cubelets] &eSet cubelets of &a%player% &eto &a%cubelets% &ecubelets!");
-        this.messages.getConfig().addDefault("you-have-cubelets-message", "&a[Cubelets] &eYou have &a%amount% &ecubelets!");
-        this.messages.getConfig().addDefault("Individual-Holo-Line-1", "&aYou found %reward-name%");
-        this.messages.getConfig().addDefault("Individual-Holo-Line-2", "&bRarity: %rarity%");
-        this.messages.getConfig().addDefault("Public-Holo-Line-1", "&a%player% has found %reward-name%");
-        this.messages.getConfig().addDefault("Public-Holo-Line-2", "&bRarity: %rarity%");
-        this.messages.getConfig().addDefault("click-to-use", "&aClick to use");
-        this.messages.getConfig().options().copyDefaults(true);
-        this.messages.save();
+        this.hologramService = new HologramService(this);
+        this.settingsConfig = new SettingsConfig(new File(this.getDataFolder() + "/settings.yml"));
+        this.settingsConfig.save();
+        this.settingsConfig.getConfig().addDefault("fireworks-height", 15);
+        this.settingsConfig.getConfig().addDefault("fireworks-speed", 3);
+        this.settingsConfig.getConfig().addDefault("reset-after", 5);
+        this.settingsConfig.getConfig().addDefault("floating-item-height", 1.6D);
+        this.settingsConfig.getConfig().addDefault("mysql", false);
+        this.settingsConfig.getConfig().addDefault("host", "localhost");
+        this.settingsConfig.getConfig().addDefault("port", "3306");
+        this.settingsConfig.getConfig().addDefault("database", "testdb");
+        this.settingsConfig.getConfig().addDefault("username", "root");
+        this.settingsConfig.getConfig().addDefault("password", "");
+        this.settingsConfig.getConfig().options().copyDefaults(true);
+        this.settingsConfig.save();
+        this.dataConfig = new DataConfig(new File(this.getDataFolder() + "/data.yml"));
+        this.dataConfig.save();
+        this.dataConfig.getConfig().options().copyDefaults(true);
+        this.dataConfig.save();
+        this.messagesConfig = new MessagesConfig(new File(this.getDataFolder() + "/messages.yml"));
+        this.messagesConfig.save();
+        this.messagesConfig.getConfig().addDefault("add-cubelet-error", "&a[Cubelets] &7You already added this block as a cubelet block!");
+        this.messagesConfig.getConfig().addDefault("add-cubelet-message", "&a[Cubelets] &eYou have added this block as a cubelet block!");
+        this.messagesConfig.getConfig().addDefault("remove-cubelet-error", "&a[Cubelets] &7This is not a cubelet block!");
+        this.messagesConfig.getConfig().addDefault("remove-cubelet-message", "&a[Cubelets] &eYou have removed this cubelet block!");
+        this.messagesConfig.getConfig().addDefault("already-in-use", "&a[Cubelets] &7This cubelet block is already in use!");
+        this.messagesConfig.getConfig().addDefault("not-enough-cubelets", "&a[Cubelets] &7You dont have any cubelets to open!");
+        this.messagesConfig.getConfig().addDefault("not-online", "&a[Cubelets] &7That player is not online!");
+        this.messagesConfig.getConfig().addDefault("cubelets-add", "&a[Cubelets] &eAdded &a%cubelets% &ecubelets for &a%player%&e!");
+        this.messagesConfig.getConfig().addDefault("cubelets-remove", "&a[Cubelets] &eRemoved &a%cubelets% &ecubelets from &a%player%&e!");
+        this.messagesConfig.getConfig().addDefault("cubelets-set", "&a[Cubelets] &eSet cubelets of &a%player% &eto &a%cubelets% &ecubelets!");
+        this.messagesConfig.getConfig().addDefault("you-have-cubelets-message", "&a[Cubelets] &eYou have &a%amount% &ecubelets!");
+        this.messagesConfig.getConfig().addDefault("Individual-Holo-Line-1", "&aYou found %reward-name%");
+        this.messagesConfig.getConfig().addDefault("Individual-Holo-Line-2", "&bRarity: %rarity%");
+        this.messagesConfig.getConfig().addDefault("Public-Holo-Line-1", "&a%player% has found %reward-name%");
+        this.messagesConfig.getConfig().addDefault("Public-Holo-Line-2", "&bRarity: %rarity%");
+        this.messagesConfig.getConfig().addDefault("click-to-use", "&aClick to use");
+        this.messagesConfig.getConfig().options().copyDefaults(true);
+        this.messagesConfig.save();
         instance = this;
-        this.api = new CubeletsAPI();
+
+        Bukkit.getCommandMap().register("cubelets", new CubeletsCommand(this));
+
         this.getConfig().options().copyDefaults(true);
         this.saveConfig();
 
         (new BukkitRunnable() {
             public void run() {
-                List<String> c = Main.this.data.getConfig().getStringList("cube-list");
+                List<String> c = Cubelets.this.dataConfig.getConfig().getStringList("cube-list");
                 if (c != null && !c.isEmpty()) {
                     for (String s : c) {
-                        Location loc = Main.getLocationFromString(s);
+                        Location loc = Cubelets.getLocationFromString(s);
                         if (loc == null || loc.getWorld() == null) {
                             continue;
                         }
-                        Location holoLoc = Main.this.getFixedLocation(loc.clone().add(0.0D, 2.0D, 0.0D));
-                        Hologram h = Main.this.holograms.createTextHologram(holoLoc, Main.this.FormatText(Main.this.messages.getConfig().getString("click-to-use")));
-                        Main.this.holo.put(loc.getWorld().getBlockAt(holoLoc.clone().add(0.0D, -2.0D, 0.0D)), h);
+                        Location holoLoc = Cubelets.this.getFixedLocation(loc.clone().add(0.0D, 2.0D, 0.0D));
+                        Hologram h = Cubelets.this.hologramService.createTextHologram(holoLoc, Cubelets.this.formatText(Cubelets.this.messagesConfig.getConfig().getString("click-to-use")));
+                        Cubelets.this.holo.put(loc.getWorld().getBlockAt(holoLoc.clone().add(0.0D, -2.0D, 0.0D)), h);
                     }
                 }
             }
         }).runTaskLater(this, 100L);
 
-        String s;
-        if (this.settings.getConfig().getBoolean("mysql")) {
-            s = this.settings.getConfig().getString("host");
-            String port = this.settings.getConfig().getString("port");
-            String database = this.settings.getConfig().getString("database");
-            String username = this.settings.getConfig().getString("username");
-            String password = this.settings.getConfig().getString("password");
-            this.sqlConnection = new SQLConnection(this, s, port, database, username, password);
+        if (this.settingsConfig.getConfig().getBoolean("mysql")) {
+            String host = this.settingsConfig.getConfig().getString("host");
+            String port = this.settingsConfig.getConfig().getString("port");
+            String database = this.settingsConfig.getConfig().getString("database");
+            String username = this.settingsConfig.getConfig().getString("username");
+            String password = this.settingsConfig.getConfig().getString("password");
+            this.sqlConnection = new SQLConnection(this, host, port, database, username, password);
             this.sqlConnection.openConnection();
         }
 
-        Iterator var7 = Bukkit.getOnlinePlayers().iterator();
-
-        while(var7.hasNext()) {
-            Player p = (Player)var7.next();
-            this.Register(p);
+        for (Player player : Bukkit.getOnlinePlayers()) {
+            this.register(player);
         }
 
-        var7 = this.getConfig().getConfigurationSection("").getKeys(false).iterator();
-
-        while(var7.hasNext()) {
-            s = (String)var7.next();
+        for (String s : this.getConfig().getConfigurationSection("").getKeys(false)) {
             if (s != null) {
                 this.size.put(s, this.getConfig().getConfigurationSection(s + ".rewards").getKeys(false).size());
             }
@@ -146,17 +136,10 @@ public class Main extends JavaPlugin implements Listener {
 
     }
 
-    public static Main getInstance() {
-        return instance;
-    }
-
-    public SQLConnection getMainSQLConnection() {
-        return this.sqlConnection;
-    }
-
+    @Override
     public void onDisable() {
-        if (this.holograms != null) {
-            this.holograms.deleteAllOwnedHolograms();
+        if (this.hologramService != null) {
+            this.hologramService.deleteAllOwnedHolograms();
         }
     }
 
@@ -203,19 +186,13 @@ public class Main extends JavaPlugin implements Listener {
         ArrayList<Color> fade = new ArrayList<>();
         List<String> lore = this.getConfig().getStringList(loc.getWorld().getName() + ".firework.colors");
         List<String> lore2 = this.getConfig().getStringList(loc.getWorld().getName() + ".firework.fade");
-        Iterator var7 = lore.iterator();
 
-        String l;
-        while(var7.hasNext()) {
-            l = (String)var7.next();
-            colors.add(this.getColor(l));
+        for (String string : lore) {
+            colors.add(this.getColor(string));
         }
 
-        var7 = lore2.iterator();
-
-        while(var7.hasNext()) {
-            l = (String)var7.next();
-            fade.add(this.getColor(l));
+        for (String string : lore2) {
+            fade.add(this.getColor(string));
         }
 
         final Firework f = loc.getWorld().spawn(loc, Firework.class);
@@ -230,16 +207,16 @@ public class Main extends JavaPlugin implements Listener {
         }).runTaskLater(getInstance(), 1L);
     }
 
-    public void Register(Player p) {
-        if (this.settings.getConfig().getBoolean("mysql") && !this.api.existsInDatabase(p)) {
-            this.api.createCubelets(p);
+    public void register(Player p) {
+        if (this.settingsConfig.getConfig().getBoolean("mysql") && !CubeletsAPI.existsInDatabase(p)) {
+            CubeletsAPI.createCubelets(p);
         }
 
     }
 
     @EventHandler
     public void onLogin(PlayerJoinEvent e) {
-        this.Register(e.getPlayer());
+        this.register(e.getPlayer());
     }
 
     public Location getFixedLocation(Location loc) {
@@ -254,7 +231,7 @@ public class Main extends JavaPlugin implements Listener {
                 return;
             }
 
-            e.getPlayer().sendMessage(this.FormatText(this.messages.getConfig().getString("remove-cubelet-message")));
+            e.getPlayer().sendMessage(this.formatText(this.messagesConfig.getConfig().getString("remove-cubelet-message")));
             this.removePotion(e.getBlock());
         }
 
@@ -271,47 +248,47 @@ public class Main extends JavaPlugin implements Listener {
             this.cooldown.add(e.getPlayer().getName());
             (new BukkitRunnable() {
                 public void run() {
-                    if (Main.this.cooldown.contains(e.getPlayer().getName())) {
-                        Main.this.cooldown.remove(e.getPlayer().getName());
+                    if (Cubelets.this.cooldown.contains(e.getPlayer().getName())) {
+                        Cubelets.this.cooldown.remove(e.getPlayer().getName());
                     }
 
                 }
             }).runTaskLater(this, 20L);
             if (this.used.contains(this.getFixedLocation(e.getClickedBlock().getLocation()))) {
-                e.getPlayer().sendMessage(this.FormatText(this.messages.getConfig().getString("already-in-use")));
+                e.getPlayer().sendMessage(this.formatText(this.messagesConfig.getConfig().getString("already-in-use")));
                 return;
             }
 
-            if (this.api.getCubelets(e.getPlayer()) < 1 || this.api.getCubelets(e.getPlayer()) == 0) {
-                e.getPlayer().sendMessage(this.FormatText(this.messages.getConfig().getString("not-enough-cubelets")));
+            if (CubeletsAPI.getCubelets(e.getPlayer()) < 1 || CubeletsAPI.getCubelets(e.getPlayer()) == 0) {
+                e.getPlayer().sendMessage(this.formatText(this.messagesConfig.getConfig().getString("not-enough-cubelets")));
                 return;
             }
 
-            this.api.removeCubelets(e.getPlayer(), 1);
+            CubeletsAPI.removeCubelets(e.getPlayer(), 1);
             this.used.add(this.getFixedLocation(e.getClickedBlock().getLocation()));
             if (this.holo.containsKey(e.getClickedBlock())) {
-                Hologram h = (Hologram)this.holo.get(e.getClickedBlock());
+                Hologram h = this.holo.get(e.getClickedBlock());
                 h.delete();
                 this.holo.remove(e.getClickedBlock());
             }
 
             Location original = this.getFixedLocation(e.getClickedBlock().getLocation());
             final double o = original.getY();
-            this.height.put(e.getClickedBlock(), this.settings.getConfig().getInt("fireworks-height"));
+            this.height.put(e.getClickedBlock(), this.settingsConfig.getConfig().getInt("fireworks-height"));
             (new BukkitRunnable() {
                 public void run() {
                     if (!e.getPlayer().isOnline()) {
                         this.cancel();
                     } else {
-                        int x = (Integer)Main.this.height.get(e.getClickedBlock());
-                        Location max = Main.this.getFixedLocation(e.getClickedBlock().getLocation()).add(0.0D, (double)x, 0.0D);
-                        Main.this.height.put(e.getClickedBlock(), (Integer)Main.this.height.get(e.getClickedBlock()) - 1);
+                        int x = (Integer) Cubelets.this.height.get(e.getClickedBlock());
+                        Location max = Cubelets.this.getFixedLocation(e.getClickedBlock().getLocation()).add(0.0D, (double)x, 0.0D);
+                        Cubelets.this.height.put(e.getClickedBlock(), (Integer) Cubelets.this.height.get(e.getClickedBlock()) - 1);
                         if (o > (double)x) {
-                            Main.this.LaunchFirework(max);
+                            Cubelets.this.LaunchFirework(max);
                         }
 
                         if (max.getY() == o) {
-                            Main.this.reward(e.getPlayer(), e.getClickedBlock());
+                            Cubelets.this.reward(e.getPlayer(), e.getClickedBlock());
                         }
 
                         if (max.getY() <= o) {
@@ -319,7 +296,7 @@ public class Main extends JavaPlugin implements Listener {
                         }
                     }
                 }
-            }).runTaskTimer(this, (long)this.settings.getConfig().getInt("fireworks-speed"), (long)this.settings.getConfig().getInt("fireworks-speed"));
+            }).runTaskTimer(this, (long)this.settingsConfig.getConfig().getInt("fireworks-speed"), (long)this.settingsConfig.getConfig().getInt("fireworks-speed"));
         }
 
     }
@@ -327,22 +304,22 @@ public class Main extends JavaPlugin implements Listener {
     public void reset(final Block b, final Hologram hx, final Hologram hx1) {
         (new BukkitRunnable() {
             public void run() {
-                if (!Main.this.hasPotion(b)) {
+                if (!Cubelets.this.hasPotion(b)) {
                     hx.delete();
                     hx1.delete();
-                    Main.this.used.remove(Main.this.getFixedLocation(b.getLocation()));
-                    Main.this.height.remove(b);
+                    Cubelets.this.used.remove(Cubelets.this.getFixedLocation(b.getLocation()));
+                    Cubelets.this.height.remove(b);
                     this.cancel();
                 } else {
-                    Hologram h = Main.this.holograms.createTextHologram(Main.this.getFixedLocation(b.getLocation()).add(0.0D, 2.0D, 0.0D), Main.this.FormatText(Main.this.messages.getConfig().getString("click-to-use")));
-                    Main.this.holo.put(b, h);
-                    Main.this.used.remove(Main.this.getFixedLocation(b.getLocation()));
-                    Main.this.height.remove(b);
+                    Hologram h = Cubelets.this.hologramService.createTextHologram(Cubelets.this.getFixedLocation(b.getLocation()).add(0.0D, 2.0D, 0.0D), Cubelets.this.formatText(Cubelets.this.messagesConfig.getConfig().getString("click-to-use")));
+                    Cubelets.this.holo.put(b, h);
+                    Cubelets.this.used.remove(Cubelets.this.getFixedLocation(b.getLocation()));
+                    Cubelets.this.height.remove(b);
                     hx.delete();
                     hx1.delete();
                 }
             }
-        }).runTaskLater(this, (long)(20 * this.settings.getConfig().getInt("reset-after")));
+        }).runTaskLater(this, (long)(20 * this.settingsConfig.getConfig().getInt("reset-after")));
     }
 
     public void reward(Player p, Block b) {
@@ -392,20 +369,20 @@ public class Main extends JavaPlugin implements Listener {
                         }
 
                         list.remove(p);
-                        Hologram IndiHoloPlayer = this.holograms.createTextHologram(this.getFixedLocation(b.getLocation()).add(0.0D, 2.0D, 0.0D),
-                                this.FormatText(this.messages.getConfig().getString("Individual-Holo-Line-1")
+                        Hologram IndiHoloPlayer = this.hologramService.createTextHologram(this.getFixedLocation(b.getLocation()).add(0.0D, 2.0D, 0.0D),
+                                this.formatText(this.messagesConfig.getConfig().getString("Individual-Holo-Line-1")
                                         .replaceAll("%reward-name%", this.getConfig().getString(p.getWorld().getName() + ".rewards" + "." + random + ".reward-name"))));
-                        IndiHoloPlayer.getLines().appendText(this.FormatText(this.messages.getConfig().getString("Individual-Holo-Line-2")
+                        IndiHoloPlayer.getLines().appendText(this.formatText(this.messagesConfig.getConfig().getString("Individual-Holo-Line-2")
                                 .replaceAll("%rarity%", this.getConfig().getString(p.getWorld().getName() + ".rewards" + "." + random + ".reward-rarity"))));
-                        this.holograms.setViewers(IndiHoloPlayer, p);
+                        this.hologramService.setViewers(IndiHoloPlayer, p);
 
-                        Hologram IndiHoloPlayers = this.holograms.createTextHologram(this.getFixedLocation(b.getLocation()).add(0.0D, 2.0D, 0.0D),
-                                this.FormatText(this.messages.getConfig().getString("Public-Holo-Line-1")
+                        Hologram IndiHoloPlayers = this.hologramService.createTextHologram(this.getFixedLocation(b.getLocation()).add(0.0D, 2.0D, 0.0D),
+                                this.formatText(this.messagesConfig.getConfig().getString("Public-Holo-Line-1")
                                         .replaceAll("%player%", p.getName())
                                         .replaceAll("%reward-name%", this.getConfig().getString(p.getWorld().getName() + ".rewards" + "." + random + ".reward-name"))));
-                        IndiHoloPlayers.getLines().appendText(this.FormatText(this.messages.getConfig().getString("Public-Holo-Line-2")
+                        IndiHoloPlayers.getLines().appendText(this.formatText(this.messagesConfig.getConfig().getString("Public-Holo-Line-2")
                                 .replaceAll("%rarity%", this.getConfig().getString(p.getWorld().getName() + ".rewards" + "." + random + ".reward-rarity"))));
-                        this.holograms.setViewers(IndiHoloPlayers, list);
+                        this.hologramService.setViewers(IndiHoloPlayers, list);
 
                         ArrayList<Color> colors = new ArrayList();
                         ArrayList<Color> fade = new ArrayList();
@@ -446,22 +423,22 @@ public class Main extends JavaPlugin implements Listener {
     }
 
     public void addPotion(Block b) {
-        List<String> c = this.data.getConfig().getStringList("cube-list");
+        List<String> c = this.dataConfig.getConfig().getStringList("cube-list");
         if (!c.contains(getStringFromLocation(b.getLocation()))) {
             c.add(getStringFromLocation(b.getLocation()));
-            this.data.getConfig().set("cube-list", c);
-            this.data.save();
-            Hologram h = this.holograms.createTextHologram(this.getFixedLocation(b.getLocation()).add(0.0D, 2.0D, 0.0D), this.FormatText(this.messages.getConfig().getString("click-to-use")));
+            this.dataConfig.getConfig().set("cube-list", c);
+            this.dataConfig.save();
+            Hologram h = this.hologramService.createTextHologram(this.getFixedLocation(b.getLocation()).add(0.0D, 2.0D, 0.0D), this.formatText(this.messagesConfig.getConfig().getString("click-to-use")));
             this.holo.put(b, h);
         }
     }
 
     public void removePotion(Block b) {
-        List<String> c = this.data.getConfig().getStringList("cube-list");
+        List<String> c = this.dataConfig.getConfig().getStringList("cube-list");
         if (c.contains(getStringFromLocation(b.getLocation()))) {
             c.remove(getStringFromLocation(b.getLocation()));
-            this.data.getConfig().set("cube-list", c);
-            this.data.save();
+            this.dataConfig.getConfig().set("cube-list", c);
+            this.dataConfig.save();
             if (this.holo.containsKey(b)) {
                 Hologram h = (Hologram)this.holo.get(b);
                 h.delete();
@@ -472,7 +449,7 @@ public class Main extends JavaPlugin implements Listener {
     }
 
     public boolean hasPotion(Block b) {
-        List<String> list = this.data.getConfig().getStringList("cube-list");
+        List<String> list = this.dataConfig.getConfig().getStringList("cube-list");
         return list.contains(getStringFromLocation(b.getLocation()));
     }
 
@@ -497,7 +474,7 @@ public class Main extends JavaPlugin implements Listener {
         }
     }
 
-    public String FormatText(String s) {
+    public String formatText(String s) {
         return s.replaceAll("&", "§");
     }
 
