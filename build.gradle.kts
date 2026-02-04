@@ -22,7 +22,4 @@ repositories {
 dependencies {
     compileOnly("org.paperspigot:PaperSpigot:1.8.8")
     compileOnly("me.filoghost.holographicdisplays:holographicdisplays-api:3.0.0")
-    compileOnly("org.projectlombok:lombok:1.18.42")
-
-    annotationProcessor("org.projectlombok:lombok:1.18.42")
 }
