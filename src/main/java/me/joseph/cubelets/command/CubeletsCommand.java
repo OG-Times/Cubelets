@@ -32,7 +32,7 @@ public class CubeletsCommand extends Command {
     private final MessagesConfig messages;
     private final SettingsConfig settings;
     private final DataConfig data;
-    private HologramService hologramService;
+    private final HologramService hologramService;
 
     public CubeletsCommand(Cubelets cubelets) {
         super("cubelets");
@@ -41,6 +41,10 @@ public class CubeletsCommand extends Command {
         this.settings = cubelets.getSettingsConfig();
         this.messages = cubelets.getMessagesConfig();
         this.hologramService = cubelets.getHologramService();
+    }
+
+    private void runSync(Runnable task) {
+        Bukkit.getScheduler().runTask(Cubelets.getInstance(), task);
     }
 
     @Override
@@ -54,7 +58,11 @@ public class CubeletsCommand extends Command {
                     }
 
                     parse = Integer.parseInt(args[2]);
-                    CubeletsAPI.addCubelets(Bukkit.getPlayer(args[1]), parse);
+                    if (this.settings.getConfig().getBoolean("mysql")) {
+                        CubeletsAPI.addCubeletsAsync(Bukkit.getPlayer(args[1]), parse);
+                    } else {
+                        CubeletsAPI.addCubelets(Bukkit.getPlayer(args[1]), parse);
+                    }
                 }
 
                 if (args[0].equalsIgnoreCase("set")) {
@@ -63,7 +71,11 @@ public class CubeletsCommand extends Command {
                     }
 
                     parse = Integer.parseInt(args[2]);
-                    CubeletsAPI.setCubelets(Bukkit.getPlayer(args[1]), parse);
+                    if (this.settings.getConfig().getBoolean("mysql")) {
+                        CubeletsAPI.setCubeletsAsync(Bukkit.getPlayer(args[1]), parse);
+                    } else {
+                        CubeletsAPI.setCubelets(Bukkit.getPlayer(args[1]), parse);
+                    }
                 }
 
                 if (args[0].equalsIgnoreCase("remove")) {
@@ -72,6 +84,19 @@ public class CubeletsCommand extends Command {
                     }
 
                     parse = Integer.parseInt(args[2]);
+                    if (this.settings.getConfig().getBoolean("mysql")) {
+                        Player target = Bukkit.getPlayer(args[1]);
+                        int finalParse = parse;
+                        CubeletsAPI.getCubeletsAsync(target).thenAccept(amount -> runSync(() -> {
+                            if (amount < finalParse) {
+                                CubeletsAPI.setCubeletsAsync(target, 0);
+                                return;
+                            }
+                            CubeletsAPI.removeCubeletsAsync(target, finalParse);
+                        }));
+                        return true;
+                    }
+
                     if (CubeletsAPI.getCubelets(Bukkit.getPlayer(args[1])) < parse) {
                         CubeletsAPI.setCubelets(Bukkit.getPlayer(args[1]), 0);
                         return true;
@@ -85,6 +110,11 @@ public class CubeletsCommand extends Command {
                 int parse;
                 if (args.length == 0) {
                     if (!player.isOp() && !player.hasPermission("cubelets.admin")) {
+                        if (this.settings.getConfig().getBoolean("mysql")) {
+                            CubeletsAPI.getCubeletsAsync(player).thenAccept(amount -> runSync(() ->
+                                    player.sendMessage(ColorUtil.colorize(this.messages.getConfig().getString("you-have-cubelets-message").replaceAll("%amount%", String.valueOf(amount))))));
+                            return true;
+                        }
                         player.sendMessage(ColorUtil.colorize(this.messages.getConfig().getString("you-have-cubelets-message").replaceAll("%amount%", String.valueOf(CubeletsAPI.getCubelets(player)))));
                         return true;
                     }
@@ -125,7 +155,7 @@ public class CubeletsCommand extends Command {
                 }
 
                 if (args.length == 3) {
-                    if (args[0].equalsIgnoreCase("add") && sender instanceof Player) {
+                    if (args[0].equalsIgnoreCase("add")) {
                         if (!player.isOp() && !player.hasPermission("cubelets.admin")) {
                             return true;
                         }
@@ -136,11 +166,21 @@ public class CubeletsCommand extends Command {
                         }
 
                         parse = Integer.parseInt(args[2]);
-                        CubeletsAPI.addCubelets(Bukkit.getPlayer(args[1]), parse);
-                        player.sendMessage(ColorUtil.colorize(this.messages.getConfig().getString("cubelets-add").replaceAll("%cubelets%", String.valueOf(parse)).replaceAll("%player%", Bukkit.getPlayer(args[1]).getName())));
+                        if (this.settings.getConfig().getBoolean("mysql")) {
+                            Player target = Bukkit.getPlayer(args[1]);
+                            int finalParse1 = parse;
+                            CubeletsAPI.addCubeletsAsync(target, parse).thenAccept(done -> runSync(() -> {
+                                if (player.isOnline()) {
+                                    player.sendMessage(ColorUtil.colorize(this.messages.getConfig().getString("cubelets-add").replaceAll("%cubelets%", String.valueOf(finalParse1)).replaceAll("%player%", target.getName())));
+                                }
+                            }));
+                        } else {
+                            CubeletsAPI.addCubelets(Bukkit.getPlayer(args[1]), parse);
+                            player.sendMessage(ColorUtil.colorize(this.messages.getConfig().getString("cubelets-add").replaceAll("%cubelets%", String.valueOf(parse)).replaceAll("%player%", Bukkit.getPlayer(args[1]).getName())));
+                        }
                     }
 
-                    if (args[0].equalsIgnoreCase("remove") && sender instanceof Player) {
+                    if (args[0].equalsIgnoreCase("remove")) {
                         if (!player.isOp() && !player.hasPermission("cubelets.admin")) {
                             return true;
                         }
@@ -151,8 +191,18 @@ public class CubeletsCommand extends Command {
                         }
 
                         parse = Integer.parseInt(args[2]);
-                        CubeletsAPI.removeCubelets(Bukkit.getPlayer(args[1]), parse);
-                        player.sendMessage(ColorUtil.colorize(this.messages.getConfig().getString("cubelets-remove").replaceAll("%cubelets%", String.valueOf(parse)).replaceAll("%player%", Bukkit.getPlayer(args[1]).getName())));
+                        if (this.settings.getConfig().getBoolean("mysql")) {
+                            Player target = Bukkit.getPlayer(args[1]);
+                            int finalParse2 = parse;
+                            CubeletsAPI.removeCubeletsAsync(target, parse).thenAccept(done -> runSync(() -> {
+                                if (player.isOnline()) {
+                                    player.sendMessage(ColorUtil.colorize(this.messages.getConfig().getString("cubelets-remove").replaceAll("%cubelets%", String.valueOf(finalParse2)).replaceAll("%player%", target.getName())));
+                                }
+                            }));
+                        } else {
+                            CubeletsAPI.removeCubelets(Bukkit.getPlayer(args[1]), parse);
+                            player.sendMessage(ColorUtil.colorize(this.messages.getConfig().getString("cubelets-remove").replaceAll("%cubelets%", String.valueOf(parse)).replaceAll("%player%", Bukkit.getPlayer(args[1]).getName())));
+                        }
                     }
 
                     if (args[0].equalsIgnoreCase("set")) {
@@ -166,8 +216,18 @@ public class CubeletsCommand extends Command {
                         }
 
                         parse = Integer.parseInt(args[2]);
-                        CubeletsAPI.setCubelets(Bukkit.getPlayer(args[1]), parse);
-                        player.sendMessage(ColorUtil.colorize(this.messages.getConfig().getString("cubelets-set").replaceAll("%cubelets%", String.valueOf(parse)).replaceAll("%player%", Bukkit.getPlayer(args[1]).getName())));
+                        if (this.settings.getConfig().getBoolean("mysql")) {
+                            Player target = Bukkit.getPlayer(args[1]);
+                            int finalParse = parse;
+                            CubeletsAPI.setCubeletsAsync(target, parse).thenAccept(done -> runSync(() -> {
+                                if (player.isOnline()) {
+                                    player.sendMessage(ColorUtil.colorize(this.messages.getConfig().getString("cubelets-set").replaceAll("%cubelets%", String.valueOf(finalParse)).replaceAll("%player%", target.getName())));
+                                }
+                            }));
+                        } else {
+                            CubeletsAPI.setCubelets(Bukkit.getPlayer(args[1]), parse);
+                            player.sendMessage(ColorUtil.colorize(this.messages.getConfig().getString("cubelets-set").replaceAll("%cubelets%", String.valueOf(parse)).replaceAll("%player%", Bukkit.getPlayer(args[1]).getName())));
+                        }
                     }
                 }
 

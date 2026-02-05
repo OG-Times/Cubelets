@@ -3,5 +3,3 @@ main: me.joseph.cubelets.Cubelets
 author: JosephGP
 version: 1.1
 depend: [HolographicDisplays]
-commands:
-  cubelets:

@@ -23,6 +23,7 @@ import org.bukkit.event.block.Action;
 import org.bukkit.event.block.BlockBreakEvent;
 import org.bukkit.event.player.PlayerInteractEvent;
 import org.bukkit.event.player.PlayerJoinEvent;
+import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.FireworkMeta;
 import org.bukkit.inventory.meta.SkullMeta;
@@ -32,6 +33,8 @@ import org.bukkit.scheduler.BukkitRunnable;
 import java.io.File;
 import java.lang.reflect.Field;
 import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.logging.Level;
 
 @Getter
 public class Cubelets extends JavaPlugin implements Listener {
@@ -47,6 +50,8 @@ public class Cubelets extends JavaPlugin implements Listener {
     public HashMap<Block, Hologram> holo = new HashMap<>();
     public HashMap<Block, Integer> height = new HashMap<>();
     private HologramService hologramService;
+    private final Map<String, Long> logThrottle = new HashMap<>();
+    private final Map<UUID, Integer> cubeletCache = new ConcurrentHashMap<>();
 
     @Override
     public void onEnable() {
@@ -182,34 +187,77 @@ public class Cubelets extends JavaPlugin implements Listener {
     }
 
     public void LaunchFirework(Location loc) {
+        if (loc == null || loc.getWorld() == null) {
+            logThrottled("firework.null-location", Level.WARNING, "[Cubelets] Firework skipped: location/world is null.", 30000L);
+            return;
+        }
         ArrayList<Color> colors = new ArrayList<>();
         ArrayList<Color> fade = new ArrayList<>();
         List<String> lore = this.getConfig().getStringList(loc.getWorld().getName() + ".firework.colors");
         List<String> lore2 = this.getConfig().getStringList(loc.getWorld().getName() + ".firework.fade");
 
         for (String string : lore) {
-            colors.add(this.getColor(string));
+            Color color = this.getColor(string);
+            if (color != null) {
+                colors.add(color);
+            }
         }
 
         for (String string : lore2) {
-            fade.add(this.getColor(string));
+            Color color = this.getColor(string);
+            if (color != null) {
+                fade.add(color);
+            }
         }
 
-        final Firework f = loc.getWorld().spawn(loc, Firework.class);
-        FireworkMeta fm = f.getFireworkMeta();
-        fm.addEffect(FireworkEffect.builder().flicker(this.getConfig().getBoolean(loc.getWorld().getName() + ".firework.flicker")).trail(this.getConfig().getBoolean(loc.getWorld().getName() + ".firework.trail")).with(Type.valueOf(this.getConfig().getString(loc.getWorld().getName() + ".firework.type"))).withColor(colors).withFade(fade).build());
-        fm.setPower(1);
-        f.setFireworkMeta(fm);
-        (new BukkitRunnable() {
+        String typeName = this.getConfig().getString(loc.getWorld().getName() + ".firework.type");
+        if (typeName == null || typeName.trim().isEmpty()) {
+            logThrottled("firework.missing-type." + loc.getWorld().getName(), Level.WARNING,
+                    "[Cubelets] Firework skipped: missing firework.type for world '" + loc.getWorld().getName() + "'.", 30000L);
+            return;
+        }
+
+        Type fireworkType;
+        try {
+            fireworkType = Type.valueOf(typeName.trim().toUpperCase(Locale.ROOT));
+        } catch (IllegalArgumentException ex) {
+            logThrottled("firework.bad-type." + loc.getWorld().getName(), Level.WARNING,
+                    "[Cubelets] Firework skipped: invalid firework.type '" + typeName + "' for world '" + loc.getWorld().getName() + "'.", 30000L);
+            return;
+        }
+
+        final Firework firework = loc.getWorld().spawn(loc, Firework.class);
+        FireworkMeta meta = firework.getFireworkMeta();
+        meta.addEffect(
+                FireworkEffect
+                        .builder()
+                        .flicker(this.getConfig().getBoolean(loc.getWorld().getName() + ".firework.flicker"))
+                        .trail(this.getConfig().getBoolean(loc.getWorld().getName() + ".firework.trail"))
+                        .with(fireworkType)
+                        .withColor(colors)
+                        .withFade(fade)
+                        .build()
+        );
+        meta.setPower(1);
+        firework.setFireworkMeta(meta);
+
+        new BukkitRunnable() {
             public void run() {
-                f.detonate();
+                firework.detonate();
             }
-        }).runTaskLater(getInstance(), 1L);
+        }.runTaskLater(getInstance(), 1L);
     }
 
-    public void register(Player p) {
-        if (this.settingsConfig.getConfig().getBoolean("mysql") && !CubeletsAPI.existsInDatabase(p)) {
-            CubeletsAPI.createCubelets(p);
+    public void register(Player player) {
+        if (this.settingsConfig.getConfig().getBoolean("mysql")) {
+            CubeletsAPI.existsInDatabaseAsync(player).thenAccept(exists -> {
+                if (!exists) {
+                    this.cubeletCache.put(player.getUniqueId(), 0);
+                    CubeletsAPI.createCubeletsAsync(player);
+                    return;
+                }
+                CubeletsAPI.getCubeletsAsync(player).thenAccept(amount -> this.cubeletCache.put(player.getUniqueId(), amount));
+            });
         }
 
     }
@@ -217,6 +265,18 @@ public class Cubelets extends JavaPlugin implements Listener {
     @EventHandler
     public void onLogin(PlayerJoinEvent e) {
         this.register(e.getPlayer());
+    }
+
+    @EventHandler
+    public void onQuit(PlayerQuitEvent e) {
+        if (!this.settingsConfig.getConfig().getBoolean("mysql")) {
+            return;
+        }
+        Player player = e.getPlayer();
+        Integer cached = this.cubeletCache.remove(player.getUniqueId());
+        if (cached != null) {
+            CubeletsAPI.flushCubeletsAsync(player, cached);
+        }
     }
 
     public Location getFixedLocation(Location loc) {
@@ -259,47 +319,70 @@ public class Cubelets extends JavaPlugin implements Listener {
                 return;
             }
 
-            if (CubeletsAPI.getCubelets(e.getPlayer()) < 1 || CubeletsAPI.getCubelets(e.getPlayer()) == 0) {
-                e.getPlayer().sendMessage(this.formatText(this.messagesConfig.getConfig().getString("not-enough-cubelets")));
+            final Player player = e.getPlayer();
+            final Block block = e.getClickedBlock();
+            if (this.settingsConfig.getConfig().getBoolean("mysql")) {
+                CubeletsAPI.getCubeletsAsync(player).thenAccept(amount -> Bukkit.getScheduler().runTask(this, () -> {
+                    if (!player.isOnline()) {
+                        return;
+                    }
+                    if (amount < 1) {
+                        player.sendMessage(this.formatText(this.messagesConfig.getConfig().getString("not-enough-cubelets")));
+                        return;
+                    }
+
+                    CubeletsAPI.setCubeletsAsync(player, amount - 1);
+                    this.beginCubeletUse(player, block);
+                }));
                 return;
             }
 
-            CubeletsAPI.removeCubelets(e.getPlayer(), 1);
-            this.used.add(this.getFixedLocation(e.getClickedBlock().getLocation()));
-            if (this.holo.containsKey(e.getClickedBlock())) {
-                Hologram h = this.holo.get(e.getClickedBlock());
-                h.delete();
-                this.holo.remove(e.getClickedBlock());
+            if (CubeletsAPI.getCubelets(player) < 1) {
+                player.sendMessage(this.formatText(this.messagesConfig.getConfig().getString("not-enough-cubelets")));
+                return;
             }
 
-            Location original = this.getFixedLocation(e.getClickedBlock().getLocation());
-            final double o = original.getY();
-            this.height.put(e.getClickedBlock(), this.settingsConfig.getConfig().getInt("fireworks-height"));
-            (new BukkitRunnable() {
-                public void run() {
-                    if (!e.getPlayer().isOnline()) {
-                        this.cancel();
-                    } else {
-                        int x = (Integer) Cubelets.this.height.get(e.getClickedBlock());
-                        Location max = Cubelets.this.getFixedLocation(e.getClickedBlock().getLocation()).add(0.0D, (double)x, 0.0D);
-                        Cubelets.this.height.put(e.getClickedBlock(), (Integer) Cubelets.this.height.get(e.getClickedBlock()) - 1);
-                        if (o > (double)x) {
-                            Cubelets.this.LaunchFirework(max);
-                        }
-
-                        if (max.getY() == o) {
-                            Cubelets.this.reward(e.getPlayer(), e.getClickedBlock());
-                        }
-
-                        if (max.getY() <= o) {
-                            this.cancel();
-                        }
-                    }
-                }
-            }).runTaskTimer(this, (long)this.settingsConfig.getConfig().getInt("fireworks-speed"), (long)this.settingsConfig.getConfig().getInt("fireworks-speed"));
+            CubeletsAPI.removeCubelets(player, 1);
+            this.beginCubeletUse(player, block);
         }
 
     }
+
+    private void beginCubeletUse(final Player player, final Block block) {
+        this.used.add(this.getFixedLocation(block.getLocation()));
+        if (this.holo.containsKey(block)) {
+            Hologram h = this.holo.get(block);
+            h.delete();
+            this.holo.remove(block);
+        }
+
+        Location original = this.getFixedLocation(block.getLocation());
+        final double o = original.getY();
+        this.height.put(block, this.settingsConfig.getConfig().getInt("fireworks-height"));
+        (new BukkitRunnable() {
+            public void run() {
+                if (!player.isOnline()) {
+                    this.cancel();
+                } else {
+                    int x = (Integer) Cubelets.this.height.get(block);
+                    Location max = Cubelets.this.getFixedLocation(block.getLocation()).add(0.0D, (double)x, 0.0D);
+                    Cubelets.this.height.put(block, (Integer) Cubelets.this.height.get(block) - 1);
+                    if (o > (double)x) {
+                        Cubelets.this.LaunchFirework(max);
+                    }
+
+                    if (max.getY() == o) {
+                        Cubelets.this.reward(player, block);
+                    }
+
+                    if (max.getY() <= o) {
+                        this.cancel();
+                    }
+                }
+            }
+        }).runTaskTimer(this, (long)this.settingsConfig.getConfig().getInt("fireworks-speed"), (long)this.settingsConfig.getConfig().getInt("fireworks-speed"));
+    }
+
 
     public void reset(final Block b, final Hologram hx, final Hologram hx1) {
         (new BukkitRunnable() {
@@ -393,19 +476,45 @@ public class Cubelets extends JavaPlugin implements Listener {
                         String l;
                         while(var16.hasNext()) {
                             l = (String)var16.next();
-                            colors.add(this.getColor(l));
+                            Color color = this.getColor(l);
+                            if (color != null) {
+                                colors.add(color);
+                            }
                         }
 
                         var16 = lore2.iterator();
 
                         while(var16.hasNext()) {
                             l = (String)var16.next();
-                            fade.add(this.getColor(l));
+                            Color color = this.getColor(l);
+                            if (color != null) {
+                                fade.add(color);
+                            }
+                        }
+
+                        String rewardTypeName = this.getConfig().getString(p.getWorld().getName() + ".rewards" + "." + random + ".firework.type");
+                        if (rewardTypeName == null || rewardTypeName.trim().isEmpty()) {
+                            logThrottled("reward.firework.missing-type." + p.getWorld().getName(), Level.WARNING,
+                                    "[Cubelets] Reward firework skipped: missing firework.type for world '" + p.getWorld().getName() + "'.", 30000L);
+                            this.reset(b, IndiHoloPlayers, IndiHoloPlayer);
+                            p.updateInventory();
+                            return;
+                        }
+
+                        Type rewardFireworkType;
+                        try {
+                            rewardFireworkType = Type.valueOf(rewardTypeName.trim().toUpperCase(Locale.ROOT));
+                        } catch (IllegalArgumentException ex) {
+                            logThrottled("reward.firework.bad-type." + p.getWorld().getName(), Level.WARNING,
+                                    "[Cubelets] Reward firework skipped: invalid firework.type '" + rewardTypeName + "' for world '" + p.getWorld().getName() + "'.", 30000L);
+                            this.reset(b, IndiHoloPlayers, IndiHoloPlayer);
+                            p.updateInventory();
+                            return;
                         }
 
                         final Firework f = (Firework)b.getWorld().spawn(this.getFixedLocation(b.getLocation()), Firework.class);
                         FireworkMeta fm = f.getFireworkMeta();
-                        fm.addEffect(FireworkEffect.builder().flicker(this.getConfig().getBoolean(p.getWorld().getName() + ".rewards" + "." + random + ".firework.flicker")).trail(this.getConfig().getBoolean(p.getWorld().getName() + ".rewards" + "." + random + ".firework.trail")).with(Type.valueOf(this.getConfig().getString(p.getWorld().getName() + ".rewards" + "." + random + ".firework.type"))).withColor(colors).withFade(fade).build());
+                        fm.addEffect(FireworkEffect.builder().flicker(this.getConfig().getBoolean(p.getWorld().getName() + ".rewards" + "." + random + ".firework.flicker")).trail(this.getConfig().getBoolean(p.getWorld().getName() + ".rewards" + "." + random + ".firework.trail")).with(rewardFireworkType).withColor(colors).withFade(fade).build());
                         fm.setPower(1);
                         f.setFireworkMeta(fm);
                         (new BukkitRunnable() {
@@ -494,11 +603,20 @@ public class Cubelets extends JavaPlugin implements Listener {
             profileField = headMeta.getClass().getDeclaredField("profile");
             profileField.setAccessible(true);
             profileField.set(headMeta, profile);
-        } catch (IllegalArgumentException | IllegalAccessException | NoSuchFieldException var6) {
-            var6.printStackTrace();
+        } catch (IllegalArgumentException | IllegalAccessException | NoSuchFieldException ex) {
+            ex.printStackTrace();
         }
 
         head.setItemMeta(headMeta);
         return head;
+    }
+
+    private void logThrottled(String key, Level level, String message, long intervalMs) {
+        long now = System.currentTimeMillis();
+        Long last = this.logThrottle.get(key);
+        if (last == null || (now - last) >= intervalMs) {
+            this.logThrottle.put(key, now);
+            this.getLogger().log(level, message);
+        }
     }
 }
